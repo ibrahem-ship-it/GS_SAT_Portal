@@ -3,9 +3,10 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Sanaa Tech IoT Dashboard</title>
+    <title>San3a Tech IoT Dashboard</title>
     <script src="https://cdn.tailwindcss.com"></script>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/paho-mqtt/1.0.1/mqttws31.min.js"></script>
+    <!-- استبدال مكتبة paho بمكتبة MQTT.js الحديثة -->
+    <script src="https://unpkg.com/mqtt/dist/mqtt.min.js"></script>
     <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
     <style>
         /* Custom Animations and Styling for a Premium Look */
@@ -122,7 +123,7 @@
         <!-- Header -->
         <header class="text-center py-6">
             <h1 class="text-5xl md:text-6xl font-bold cyber-font tracking-wider bg-clip-text text-transparent bg-gradient-to-r from-cyan-400 to-blue-500 mb-2">
-                صناعة تك
+                San3a Tech
             </h1>
             <p class="text-gray-300 tracking-widest uppercase text-sm">Smart Agriculture Control Center</p>
         </header>
@@ -197,23 +198,22 @@
         <!-- Connection Status Footer -->
         <footer class="text-center text-xs text-gray-400 py-4 flex justify-center items-center gap-2">
             <span id="connection-dot" class="w-2 h-2 rounded-full bg-red-500 inline-block"></span>
-            Broker: broker.hivemq.com | Built for Sanaa Tech
+            Broker: broker.hivemq.com | Built for San3a Tech
         </footer>
 
     </div>
 
     <script>
         // --- MQTT Configuration ---
-        const mqtt_server = "broker.hivemq.com";
-        const mqtt_port = 8000; // WebSocket port for HiveMQ public broker
-        // Generate a random client ID to avoid conflicts
+        // استخدام الرابط الآمن لمكتبة MQTT.js
+        const brokerUrl = "wss://broker.hivemq.com:8884/mqtt";
         const client_id = "web-client-" + Math.random().toString(16).substr(2, 8);
 
         // Topics (Must match ESP32 code)
-        const TOPIC_LED_CONTROL = "sanaatech/iot/led/control";
-        const TOPIC_LED_STATUS = "sanaatech/iot/led/status";
-        const TOPIC_SOIL_DATA = "sanaatech/iot/soil/data";
-        const TOPIC_MODE_CONTROL = "sanaatech/iot/mode";
+        const TOPIC_LED_CONTROL = "san3atech/iot/led/control";
+        const TOPIC_LED_STATUS = "san3atech/iot/led/status";
+        const TOPIC_SOIL_DATA = "san3atech/iot/soil/data";
+        const TOPIC_MODE_CONTROL = "san3atech/iot/mode";
 
         // Global Variables
         let mqttClient;
@@ -235,84 +235,82 @@
 
         // --- Initialize Connection ---
         function initMQTT() {
-            mqttClient = new Paho.MQTT.Client(mqtt_server, mqtt_port, client_id);
-
-            mqttClient.onConnectionLost = onConnectionLost;
-            mqttClient.onMessageArrived = onMessageArrived;
-
-            connectToBroker();
-        }
-
-        function connectToBroker() {
+            console.log("Attempting to connect to HiveMQ via MQTT.js...");
+            
             const options = {
-                timeout: 3,
-                onSuccess: onConnect,
-                onFailure: onFailure,
+                clientId: client_id,
+                keepalive: 60,
+                clean: true,
+                reconnectPeriod: 3000, // إعادة الاتصال تلقائيا كل 3 ثواني
+                connectTimeout: 10000,
             };
-            console.log("Attempting to connect to HiveMQ...");
-            mqttClient.connect(options);
-        }
 
-        function onConnect() {
-            console.log("Connected to HiveMQ MQTT Broker!");
-            
-            // Hide overlay
-            overlay.style.opacity = '0';
-            setTimeout(() => overlay.style.display = 'none', 500);
-            
-            // Update UI
-            connDot.classList.replace('bg-red-500', 'bg-green-500');
-            connDot.classList.add('shadow-[0_0_8px_#22c55e]');
+            // بدء الاتصال
+            mqttClient = mqtt.connect(brokerUrl, options);
 
-            // Subscribe to status topics
-            mqttClient.subscribe(TOPIC_SOIL_DATA);
-            mqttClient.subscribe(TOPIC_LED_STATUS);
-            
-            // Sync initial state (Optional: could add retained messages on ESP32)
-            publishMessage(TOPIC_MODE_CONTROL, isAuto ? "auto" : "manual");
-        }
+            mqttClient.on('connect', function () {
+                console.log("Connected to HiveMQ MQTT Broker!");
+                
+                // إخفاء شاشة التحميل
+                overlay.style.opacity = '0';
+                setTimeout(() => overlay.style.display = 'none', 500);
+                connectionError.classList.add('hidden');
+                
+                // تحديث واجهة المستخدم
+                connDot.classList.replace('bg-red-500', 'bg-green-500');
+                connDot.classList.add('shadow-[0_0_8px_#22c55e]');
 
-        function onFailure(responseObject) {
-            console.log("Connection failed: " + responseObject.errorMessage);
-            connectionError.classList.remove('hidden');
-            setTimeout(connectToBroker, 5000); // Retry after 5s
-        }
+                // الاشتراك في الـ Topics
+                mqttClient.subscribe(TOPIC_SOIL_DATA);
+                mqttClient.subscribe(TOPIC_LED_STATUS);
+                
+                // إرسال حالة النظام الحالية (Auto/Manual)
+                publishMessage(TOPIC_MODE_CONTROL, isAuto ? "auto" : "manual");
+            });
 
-        function onConnectionLost(responseObject) {
-            if (responseObject.errorCode !== 0) {
-                console.log("Connection lost: " + responseObject.errorMessage);
-                // Show overlay again
+            mqttClient.on('reconnect', function () {
+                console.log("Reconnecting to broker...");
                 overlay.style.display = 'flex';
                 setTimeout(() => overlay.style.opacity = '1', 10);
                 connectionError.classList.remove('hidden');
-                connectionError.innerText = "Connection lost. Reconnecting...";
+                connectionError.innerText = "Reconnecting to broker...";
                 
                 connDot.classList.replace('bg-green-500', 'bg-red-500');
                 connDot.classList.remove('shadow-[0_0_8px_#22c55e]');
-                
-                setTimeout(connectToBroker, 3000);
-            }
-        }
+            });
 
-        function onMessageArrived(message) {
-            const topic = message.destinationName;
-            const payload = message.payloadString;
-            
-            console.log(`Message arrived: [${topic}] ${payload}`);
+            mqttClient.on('error', function (err) {
+                console.error("Connection error: ", err);
+                connectionError.innerText = "Connection Error: " + err.message;
+                connectionError.classList.remove('hidden');
+            });
 
-            if (topic === TOPIC_SOIL_DATA) {
-                updateSoilData(parseInt(payload));
-            } else if (topic === TOPIC_LED_STATUS) {
-                updateLEDStatusUI(payload);
-            }
+            mqttClient.on('offline', function () {
+                console.log("Client went offline");
+            });
+
+            mqttClient.on('message', function (topic, message) {
+                // تحويل الرسالة لنص
+                const payload = message.toString();
+                console.log(`Message arrived: [${topic}] ${payload}`);
+
+                if (topic === TOPIC_SOIL_DATA) {
+                    updateSoilData(parseInt(payload));
+                } else if (topic === TOPIC_LED_STATUS) {
+                    updateLEDStatusUI(payload);
+                }
+            });
         }
 
         function updateSoilData(moisture) {
             // Update Text
             moistureValue.innerText = moisture + "%";
             
-            // Animate Water Level (inverse relation: 0% moisture = 100% top, 100% moisture = 0% top)
-            const topPosition = 100 - moisture;
+            // Animate Water Level
+            let topPosition = 100 - moisture;
+            if(topPosition < 0) topPosition = 0;
+            if(topPosition > 100) topPosition = 100;
+            
             waterLevel.style.top = topPosition + "%";
 
             // Update Status Text and Color based on threshold
@@ -341,7 +339,6 @@
                 ledStatusIndicator.innerText = "INACTIVE";
                 ledStatusIndicator.className = "px-3 py-1 rounded-full text-xs font-bold bg-gray-500/20 text-gray-400 border border-gray-500/50";
                 btnOn.classList.remove('bg-cyan-600', 'border-cyan-400');
-                // btnOff.classList.add('bg-red-600', 'border-red-400'); // Optional: highlight off button when off
             }
         }
 
@@ -379,10 +376,8 @@
         }
 
         function publishMessage(topic, payload) {
-            if (mqttClient && mqttClient.isConnected()) {
-                const message = new Paho.MQTT.Message(payload);
-                message.destinationName = topic;
-                mqttClient.send(message);
+            if (mqttClient && mqttClient.connected) {
+                mqttClient.publish(topic, payload);
                 console.log(`Published: [${topic}] ${payload}`);
             } else {
                 console.warn("Cannot publish. Not connected to MQTT broker.");
