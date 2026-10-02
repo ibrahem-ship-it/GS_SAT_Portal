@@ -1,154 +1,418 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="en" dir="ltr">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>ESP32 LED Controller</title>
-    <!-- Tailwind CSS for styling -->
+    <title>San3a-Tech Smart Control</title>
+    <!-- Tailwind CSS -->
     <script src="https://cdn.tailwindcss.com"></script>
-    <!-- MQTT.js for WebSockets connection to the broker -->
+    <!-- MQTT.js -->
     <script src="https://unpkg.com/mqtt/dist/mqtt.min.js"></script>
+    <!-- Google Fonts -->
+    <link href="https://fonts.googleapis.com/css2?family=Cairo:wght@400;600;700;900&family=Inter:wght@400;600;700&display=swap" rel="stylesheet">
+    
     <style>
-        /* Smooth transitions for interactive elements */
-        .btn-transition {
-            transition: all 0.2s ease-in-out;
+        :root {
+            --brand-color: #0f172a; /* Slate 900 */
+            --accent-color: #10b981; /* Emerald 500 */
+        }
+        body {
+            font-family: 'Inter', 'Cairo', sans-serif;
+            background-color: #f8fafc;
+            transition: all 0.3s ease;
+        }
+        .glass-card {
+            background: rgba(255, 255, 255, 0.95);
+            backdrop-filter: blur(10px);
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            box-shadow: 0 10px 40px -10px rgba(0,0,0,0.08);
+        }
+        .circular-chart {
+            display: block;
+            margin: 0 auto;
+            max-width: 80%;
+            max-height: 250px;
+        }
+        .circle-bg {
+            fill: none;
+            stroke: #e2e8f0;
+            stroke-width: 3.8;
+        }
+        .circle {
+            fill: none;
+            stroke-width: 2.8;
+            stroke-linecap: round;
+            transition: stroke-dasharray 1s ease-out, stroke 0.5s ease;
+        }
+        .percentage {
+            fill: #1e293b;
+            font-family: 'Inter', 'Cairo', sans-serif;
+            font-weight: 700;
+            font-size: 0.5em;
+            text-anchor: middle;
+        }
+        .btn-active {
+            background-color: var(--brand-color);
+            color: white;
+            transform: scale(0.98);
+            box-shadow: inset 0 2px 4px rgba(0,0,0,0.1);
+        }
+        .btn-inactive {
+            background-color: white;
+            color: #64748b;
+            border: 1px solid #cbd5e1;
+        }
+        .btn-inactive:hover {
+            border-color: var(--brand-color);
+            color: var(--brand-color);
+        }
+        /* Loader */
+        .ping {
+            animation: ping 1.5s cubic-bezier(0, 0, 0.2, 1) infinite;
+        }
+        @keyframes ping {
+            75%, 100% { transform: scale(2); opacity: 0; }
         }
     </style>
 </head>
-<body class="bg-gray-100 min-h-screen flex items-center justify-center p-4 font-sans text-gray-800">
+<body class="min-h-screen flex flex-col items-center justify-center p-4 lg:p-8">
 
-    <div class="bg-white rounded-2xl shadow-xl p-8 max-w-md w-full">
-        <div class="text-center mb-8">
-            <h1 class="text-3xl font-bold text-gray-900 mb-2">ESP32 Controller</h1>
-            <p class="text-sm text-gray-500">Control your 38-pin ESP32 internal LED over the web using MQTT.</p>
+    <!-- Navbar / Header -->
+    <div class="w-full max-w-4xl flex justify-between items-center mb-8">
+        <div class="flex items-center space-x-3 rtl:space-x-reverse">
+            <div class="w-10 h-10 bg-slate-900 rounded-lg flex items-center justify-center text-white font-bold text-xl shadow-lg">
+                S
+            </div>
+            <h1 class="text-2xl font-black text-slate-900 tracking-tight">San3a-Tech</h1>
         </div>
+        
+        <button onclick="toggleLanguage()" class="px-4 py-2 bg-white rounded-full shadow-sm text-sm font-semibold text-slate-700 hover:bg-slate-50 transition border border-slate-200">
+            <span id="langIcon">🌐</span> <span id="langText">عربي</span>
+        </button>
+    </div>
 
-        <!-- Connection Status -->
-        <div class="flex items-center justify-center mb-8 bg-gray-50 rounded-lg p-3">
-            <div id="statusIndicator" class="w-3 h-3 rounded-full bg-red-500 mr-2 animate-pulse"></div>
-            <span id="statusText" class="text-sm font-medium text-gray-600">Disconnected</span>
-        </div>
+    <!-- Main Dashboard Grid -->
+    <div class="w-full max-w-4xl grid grid-cols-1 md:grid-cols-2 gap-6">
+        
+        <!-- Left Card: Soil Moisture -->
+        <div class="glass-card rounded-3xl p-8 flex flex-col items-center justify-center relative overflow-hidden">
+            <!-- Connection Status -->
+            <div class="absolute top-6 left-6 rtl:left-auto rtl:right-6 flex items-center space-x-2 rtl:space-x-reverse">
+                <div class="relative flex h-3 w-3">
+                  <span id="statusPing" class="ping absolute inline-flex h-full w-full rounded-full bg-red-400 opacity-75"></span>
+                  <span id="statusDot" class="relative inline-flex rounded-full h-3 w-3 bg-red-500"></span>
+                </div>
+                <span id="statusLabel" class="text-xs font-semibold text-slate-500 uppercase tracking-wider" data-i18n="disconnected">Disconnected</span>
+            </div>
 
-        <!-- Control Buttons -->
-        <div class="flex flex-col space-y-4">
-            <button id="btnOn" disabled onclick="turnOnLED()" class="btn-transition opacity-50 cursor-not-allowed bg-green-500 hover:bg-green-600 text-white font-bold py-4 px-6 rounded-xl shadow-md hover:shadow-lg flex items-center justify-center text-lg">
-                <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z" />
-                </svg>
-                Turn LED ON
-            </button>
+            <h2 class="text-xl font-bold text-slate-800 mt-8 mb-2" data-i18n="soil_moisture">Soil Moisture</h2>
+            <p class="text-sm text-slate-500 mb-6 text-center" data-i18n="soil_desc">Real-time monitoring from GPIO 27</p>
             
-            <button id="btnOff" disabled onclick="turnOffLED()" class="btn-transition opacity-50 cursor-not-allowed bg-red-500 hover:bg-red-600 text-white font-bold py-4 px-6 rounded-xl shadow-md hover:shadow-lg flex items-center justify-center text-lg">
-                <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M18.364 5.636l-3.536 3.536m0 5.656l3.536 3.536M9.172 9.172L5.636 5.636m3.536 9.192l-3.536 3.536M21 12a9 9 0 11-18 0 9 9 0 0118 0zm-5 0a4 4 0 11-8 0 4 4 0 018 0z" />
-                </svg>
-                Turn LED OFF
-            </button>
+            <!-- SVG Gauge -->
+            <svg viewBox="0 0 36 36" class="circular-chart text-emerald-500">
+                <path class="circle-bg"
+                  d="M18 2.0845
+                    a 15.9155 15.9155 0 0 1 0 31.831
+                    a 15.9155 15.9155 0 0 1 0 -31.831"
+                />
+                <path class="circle"
+                  id="moistureCircle"
+                  stroke="currentColor"
+                  stroke-dasharray="0, 100"
+                  d="M18 2.0845
+                    a 15.9155 15.9155 0 0 1 0 31.831
+                    a 15.9155 15.9155 0 0 1 0 -31.831"
+                />
+                <text x="18" y="20.35" class="percentage" id="moistureText">0%</text>
+            </svg>
+            <div id="moistureStatusText" class="mt-4 font-semibold text-emerald-600" data-i18n="status_dry">Waiting for data...</div>
         </div>
 
-        <div class="mt-8 pt-4 border-t border-gray-200 text-xs text-gray-400 text-center">
-            Topic: <span class="font-mono bg-gray-100 px-1 py-0.5 rounded">my_esp32_38pin/led_control</span>
+        <!-- Right Card: Controls -->
+        <div class="glass-card rounded-3xl p-8 flex flex-col justify-center">
+            <h2 class="text-xl font-bold text-slate-800 mb-2" data-i18n="control_panel">System Control</h2>
+            <p class="text-sm text-slate-500 mb-8" data-i18n="control_desc">Manage LED/Pump behavior</p>
+
+            <div class="space-y-4">
+                <!-- Auto Mode Button -->
+                <button id="btnAuto" onclick="setMode('AUTO')" class="w-full p-4 rounded-2xl font-bold text-lg transition-all flex items-center justify-center btn-inactive">
+                    <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6 mr-2 rtl:ml-2 rtl:mr-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z" />
+                    </svg>
+                    <span data-i18n="auto_mode">Smart Auto Mode</span>
+                </button>
+
+                <div class="relative flex py-2 items-center">
+                    <div class="flex-grow border-t border-slate-200"></div>
+                    <span class="flex-shrink-0 mx-4 text-slate-400 text-xs font-semibold uppercase" data-i18n="or_manual">or manual override</span>
+                    <div class="flex-grow border-t border-slate-200"></div>
+                </div>
+
+                <!-- Manual Mode Buttons -->
+                <div class="grid grid-cols-2 gap-4">
+                    <button id="btnOn" onclick="setMode('ON')" class="p-4 rounded-2xl font-bold text-lg transition-all btn-inactive">
+                        <span data-i18n="turn_on">Turn ON</span>
+                    </button>
+                    <button id="btnOff" onclick="setMode('OFF')" class="p-4 rounded-2xl font-bold text-lg transition-all btn-inactive">
+                        <span data-i18n="turn_off">Turn OFF</span>
+                    </button>
+                </div>
+            </div>
+            
+            <div class="mt-8 bg-slate-50 rounded-xl p-4 text-center">
+                <p class="text-xs text-slate-500">
+                    <span data-i18n="current_mode_label">Current Mode:</span> 
+                    <span id="currentModeBadge" class="inline-block px-2 py-1 bg-slate-200 text-slate-700 rounded-md font-bold ml-1 rtl:mr-1">UNKNOWN</span>
+                </p>
+            </div>
         </div>
     </div>
 
+    <div class="mt-12 text-center text-sm font-semibold text-slate-400">
+        © 2026 San3a-Tech Smart Solutions.
+    </div>
+
     <script>
-        // MUST match the exact topic used in the Arduino ESP32 code!
-        const MQTT_TOPIC = "my_esp32_38pin/led_control";
+        // ==========================================
+        // 1. MQTT Configuration
+        // ==========================================
+        const MQTT_BROKER = "wss://broker.emqx.io:8084/mqtt";
+        const CLIENT_ID = 'san3atech-web-' + Math.random().toString(16).substr(2, 8);
         
-        // Use EMQX public broker over Secure WebSockets (Port 8084)
-        const MQTT_BROKER_URL = "wss://broker.emqx.io:8084/mqtt";
+        // Topics
+        const TOPIC_SET_MODE = "san3atech/esp32/led/set"; // Send: AUTO, ON, OFF
+        const TOPIC_SOIL_DATA = "san3atech/esp32/soil";   // Receive: 0-100
         
-        // Generate a random client ID for the web browser
-        const clientId = 'web-client-' + Math.random().toString(16).substr(2, 8);
+        let client;
+        let currentMode = "UNKNOWN";
+
+        // ==========================================
+        // 2. Multi-Language Dictionary
+        // ==========================================
+        const i18n = {
+            "en": {
+                "disconnected": "Disconnected",
+                "connected": "Connected",
+                "soil_moisture": "Soil Moisture",
+                "soil_desc": "Real-time monitoring from GPIO 27",
+                "status_dry": "Very Dry - Needs Water!",
+                "status_good": "Optimal Moisture",
+                "status_wet": "Too Wet",
+                "status_wait": "Waiting for data...",
+                "control_panel": "System Control",
+                "control_desc": "Manage LED/Pump behavior",
+                "auto_mode": "Smart Auto Mode",
+                "or_manual": "or manual override",
+                "turn_on": "Turn ON",
+                "turn_off": "Turn OFF",
+                "current_mode_label": "Current Mode:"
+            },
+            "ar": {
+                "disconnected": "غير متصل",
+                "connected": "متصل بالخادم",
+                "soil_moisture": "رطوبة التربة",
+                "soil_desc": "مراقبة حية من منفذ GPIO 27",
+                "status_dry": "التربة جافة - تحتاج للري!",
+                "status_good": "مستوى الرطوبة ممتاز",
+                "status_wet": "التربة مشبعة بالماء",
+                "status_wait": "في انتظار البيانات...",
+                "control_panel": "لوحة التحكم",
+                "control_desc": "إدارة تشغيل الليد / المضخة",
+                "auto_mode": "الوضع الذكي (تلقائي)",
+                "or_manual": "أو التحكم اليدوي",
+                "turn_on": "تشغيل",
+                "turn_off": "إيقاف",
+                "current_mode_label": "الوضع الحالي:"
+            }
+        };
+
+        let currentLang = "en";
+        let isSimulationMode = false;
+
+        // ==========================================
+        // 3. UI and Logic Functions
+        // ==========================================
         
-        // UI Elements
-        const statusIndicator = document.getElementById('statusIndicator');
-        const statusText = document.getElementById('statusText');
-        const btnOn = document.getElementById('btnOn');
-        const btnOff = document.getElementById('btnOff');
-
-        let mqttClient;
-
-        // Initialize MQTT Connection
-        function connectMQTT() {
-            statusText.innerText = "Connecting...";
-            statusIndicator.classList.replace('bg-red-500', 'bg-yellow-400');
-
-            // Connect to the broker
-            mqttClient = mqtt.connect(MQTT_BROKER_URL, {
-                clientId: clientId,
-                clean: true,
-                connectTimeout: 4000,
-                reconnectPeriod: 1000,
+        function toggleLanguage() {
+            currentLang = currentLang === "en" ? "ar" : "en";
+            document.documentElement.lang = currentLang;
+            document.documentElement.dir = currentLang === "ar" ? "rtl" : "ltr";
+            
+            document.getElementById('langText').innerText = currentLang === "ar" ? "English" : "عربي";
+            
+            // Update all texts
+            document.querySelectorAll('[data-i18n]').forEach(el => {
+                const key = el.getAttribute('data-i18n');
+                if (i18n[currentLang][key]) {
+                    el.innerText = i18n[currentLang][key];
+                }
             });
 
-            // Handle successful connection
-            mqttClient.on('connect', () => {
-                console.log("Connected to MQTT Broker!");
+            // Re-render dynamic text based on current values
+            updateStatusLabel((client && client.connected) || isSimulationMode);
+            updateMoistureText(lastMoistureVal);
+        }
+
+        // Initialize connection
+        function initMQTT() {
+            try {
+                client = mqtt.connect(MQTT_BROKER, { clientId: CLIENT_ID, clean: true });
+
+                client.on('connect', () => {
+                    console.log("Connected to San3a-Tech Broker");
+                    isSimulationMode = false;
+                    updateStatusLabel(true);
+                    
+                    // Subscribe to sensor data
+                    client.subscribe(TOPIC_SOIL_DATA);
+                    
+                    // Set default mode on connect if unknown
+                    if(currentMode === "UNKNOWN") setMode("AUTO");
+                });
+
+                client.on('message', (topic, message) => {
+                    if (topic === TOPIC_SOIL_DATA) {
+                        let val = parseInt(message.toString());
+                        updateMoistureUI(val);
+                    }
+                });
+
+                client.on('offline', () => updateStatusLabel(false));
+                client.on('error', (err) => {
+                    console.warn("MQTT Error:", err);
+                    if (!isSimulationMode) startSimulation();
+                });
+            } catch (error) {
+                console.warn("WebSocket blocked by environment. Starting simulation.", error);
+                startSimulation();
+            }
+        }
+
+        let simInterval;
+        function startSimulation() {
+            isSimulationMode = true;
+            console.log("Running in Canvas Simulation Mode");
+            updateStatusLabel(true);
+            if(currentMode === "UNKNOWN") setMode("AUTO");
+            
+            if (simInterval) clearInterval(simInterval);
+            simInterval = setInterval(() => {
+                // Generate random soil moisture between 10% and 90%
+                let simValue = Math.floor(Math.random() * 80) + 10; 
+                updateMoistureUI(simValue);
+            }, 3000);
+        }
+
+        function updateStatusLabel(isConnected) {
+            const dot = document.getElementById('statusDot');
+            const ping = document.getElementById('statusPing');
+            const label = document.getElementById('statusLabel');
+
+            if (isConnected || isSimulationMode) {
+                dot.className = "relative inline-flex rounded-full h-3 w-3 bg-emerald-500";
+                ping.classList.remove('bg-red-400');
+                ping.classList.add('bg-emerald-400');
                 
-                // Update UI visually
-                statusIndicator.classList.replace('bg-yellow-400', 'bg-green-500');
-                statusIndicator.classList.remove('animate-pulse');
-                statusText.innerText = "Connected to Broker";
-                statusText.classList.replace('text-gray-600', 'text-green-600');
-
-                // Enable the buttons
-                enableButtons();
-            });
-
-            // Handle connection errors or offline state
-            mqttClient.on('error', (error) => {
-                console.error("MQTT Error:", error);
-                handleDisconnect();
-            });
-
-            mqttClient.on('offline', () => {
-                console.log("MQTT Client Offline");
-                handleDisconnect();
-            });
-        }
-
-        function handleDisconnect() {
-            statusIndicator.classList.remove('bg-green-500', 'bg-yellow-400');
-            statusIndicator.classList.add('bg-red-500', 'animate-pulse');
-            statusText.innerText = "Disconnected / Reconnecting...";
-            statusText.classList.replace('text-green-600', 'text-gray-600');
-            disableButtons();
-        }
-
-        function enableButtons() {
-            btnOn.disabled = false;
-            btnOff.disabled = false;
-            btnOn.classList.remove('opacity-50', 'cursor-not-allowed');
-            btnOff.classList.remove('opacity-50', 'cursor-not-allowed');
-        }
-
-        function disableButtons() {
-            btnOn.disabled = true;
-            btnOff.disabled = true;
-            btnOn.classList.add('opacity-50', 'cursor-not-allowed');
-            btnOff.classList.add('opacity-50', 'cursor-not-allowed');
-        }
-
-        // Functions to send payloads to the ESP32
-        function turnOnLED() {
-            if (mqttClient && mqttClient.connected) {
-                // Publish the string "ON" to the topic
-                mqttClient.publish(MQTT_TOPIC, "ON");
-                console.log("Published: ON");
+                let text = i18n[currentLang]["connected"];
+                if (isSimulationMode) {
+                    text += currentLang === "en" ? " (Simulated)" : " (محاكاة)";
+                }
+                label.innerText = text;
+                
+                label.classList.replace('text-slate-500', 'text-emerald-600');
+            } else {
+                dot.className = "relative inline-flex rounded-full h-3 w-3 bg-red-500";
+                ping.classList.remove('bg-emerald-400');
+                ping.classList.add('bg-red-400');
+                label.innerText = i18n[currentLang]["disconnected"];
+                label.classList.replace('text-emerald-600', 'text-slate-500');
             }
         }
 
-        function turnOffLED() {
-            if (mqttClient && mqttClient.connected) {
-                // Publish the string "OFF" to the topic
-                mqttClient.publish(MQTT_TOPIC, "OFF");
-                console.log("Published: OFF");
+        let lastMoistureVal = null;
+        function updateMoistureUI(percentage) {
+            lastMoistureVal = percentage;
+            
+            // Constrain between 0-100
+            percentage = Math.max(0, Math.min(100, percentage));
+            
+            const circle = document.getElementById('moistureCircle');
+            const text = document.getElementById('moistureText');
+            
+            // Update SVG circle stroke
+            circle.setAttribute('stroke-dasharray', `${percentage}, 100`);
+            text.innerText = `${percentage}%`;
+
+            // Change color based on level
+            circle.classList.remove('text-red-500', 'text-emerald-500', 'text-blue-500');
+            if (percentage < 30) {
+                circle.classList.add('text-red-500');
+            } else if (percentage < 70) {
+                circle.classList.add('text-emerald-500');
+            } else {
+                circle.classList.add('text-blue-500');
+            }
+
+            updateMoistureText(percentage);
+        }
+
+        function updateMoistureText(percentage) {
+            const statusText = document.getElementById('moistureStatusText');
+            if(percentage === null) return;
+
+            statusText.classList.remove('text-red-600', 'text-emerald-600', 'text-blue-600');
+            if (percentage < 30) {
+                statusText.innerText = i18n[currentLang]["status_dry"];
+                statusText.classList.add('text-red-600');
+            } else if (percentage < 70) {
+                statusText.innerText = i18n[currentLang]["status_good"];
+                statusText.classList.add('text-emerald-600');
+            } else {
+                statusText.innerText = i18n[currentLang]["status_wet"];
+                statusText.classList.add('text-blue-600');
             }
         }
 
-        // Start the connection when the page loads
-        window.onload = connectMQTT;
+        function setMode(mode) {
+            currentMode = mode;
+            
+            // Publish to MQTT
+            if (client && client.connected) {
+                client.publish(TOPIC_SET_MODE, mode);
+            } else if (isSimulationMode) {
+                console.log("[Simulation Mode] Published Mode command:", mode);
+            }
+
+            // Update Buttons UI
+            const btns = {
+                'AUTO': document.getElementById('btnAuto'),
+                'ON': document.getElementById('btnOn'),
+                'OFF': document.getElementById('btnOff')
+            };
+
+            // Reset all
+            Object.values(btns).forEach(btn => {
+                btn.className = btn.className.replace('btn-active', 'btn-inactive');
+            });
+
+            // Activate selected
+            btns[mode].className = btns[mode].className.replace('btn-inactive', 'btn-active');
+
+            // Update Badge
+            const badge = document.getElementById('currentModeBadge');
+            badge.innerText = mode;
+            if(mode === 'AUTO') {
+                badge.className = "inline-block px-2 py-1 bg-blue-100 text-blue-700 rounded-md font-bold ml-1 rtl:mr-1";
+            } else {
+                badge.className = "inline-block px-2 py-1 bg-slate-800 text-white rounded-md font-bold ml-1 rtl:mr-1";
+            }
+        }
+
+        // Start
+        window.onload = () => {
+            initMQTT();
+            updateMoistureText(null); // Show waiting text
+        };
     </script>
 </body>
 </html>
