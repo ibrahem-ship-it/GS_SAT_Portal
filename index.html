@@ -149,13 +149,14 @@
     <main class="flex-grow container mx-auto px-4 py-8 z-10">
         
         <section class="text-center mb-12 mt-2">
-            <!-- University Emblem: seamless without any border, box, or gray outline -->
-            <div class="flex justify-center items-center mb-5">
-                <img src="FBWPG.png" 
+            <!-- University Emblem: Directly bound to your exact GitHub repo path with multi-fallbacks -->
+            <div class="flex justify-center items-center mb-5 min-h-[90px]">
+                <img id="univ-logo"
+                     src="https://raw.githubusercontent.com/ibrahem-ship-it/GS_SAT_Portal/main/FBWPG.png" 
                      alt="Benha-Wuhan Faculty of Postgraduate Studies" 
                      class="w-full max-w-md md:max-w-xl h-auto object-contain blend-clean select-none" 
                      style="mix-blend-mode: multiply;" 
-                     onerror="this.style.display='none'">
+                     onerror="handleLogoFallback(this)">
             </div>
             
             <h2 class="text-2xl sm:text-3xl md:text-4xl font-extrabold text-blue-950 mb-2 leading-tight" data-i18n="heroTitle">
@@ -401,6 +402,27 @@
             </div>
         </div>
     </div>
+
+    <script>
+        // Multi-attempt loader to solve GitHub Pages case-sensitivity and raw paths
+        function handleLogoFallback(imgElement) {
+            const fallbackPaths = [
+                'FBWPG.png',
+                './FBWPG.png',
+                'fbwpg.png',
+                'https://ibrahem-ship-it.github.io/GS_SAT_Portal/FBWPG.png',
+                'FBWPG.PNG',
+                'FBWPG.jpg',
+                'fbwpg.jpg'
+            ];
+            
+            const currentAttempt = parseInt(imgElement.getAttribute('data-attempt') || '0', 10);
+            if (currentAttempt < fallbackPaths.length) {
+                imgElement.setAttribute('data-attempt', (currentAttempt + 1).toString());
+                imgElement.src = fallbackPaths[currentAttempt];
+            }
+        }
+    </script>
 
     <script type="module">
         import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.1/firebase-app.js";
